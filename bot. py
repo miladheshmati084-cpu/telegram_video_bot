@@ -1,0 +1,104 @@
+import os
+import asyncio
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+)
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# کانال‌هایی که کاربر باید عضو آنها باشد
+REQUIRED_CHANNELS = [
+    "@YourChannel1",
+    "@YourChannel2",
+]
+
+# بعداً File ID ویدیوی خودت را اینجا قرار می‌دهیم
+VIDEO_FILE_ID = "PUT_VIDEO_FILE_ID_HERE"
+
+
+async def check_membership(user_id, context):
+    for channel in REQUIRED_CHANNELS:
+        try:
+            member = await context.bot.get_chat_member(channel, user_id)
+
+            if member.status not in ["member", "administrator", "creator"]:
+                return False
+
+        except Exception:
+            return False
+
+    return True
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = []
+
+    for channel in REQUIRED_CHANNELS:
+        keyboard.append([
+            InlineKeyboardButton(
+                "📢 عضویت در کانال",
+                url=f"https://t.me/{channel.replace('@', '')}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton("✅ عضو شدم", callback_data="check")
+    ])
+
+    await update.message.reply_text(
+        "برای تماشای ویدیو ابتدا در کانال‌های زیر عضو شوید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    is_member = await check_membership(user_id, context)
+
+    if not is_member:
+        await query.message.reply_text(
+            "❌ هنوز در همه کانال‌ها عضو نشده‌ای.\n"
+            "ابتدا عضو شو و دوباره روی «عضو شدم» بزن."
+        )
+        return
+
+    if VIDEO_FILE_ID == "PUT_VIDEO_FILE_ID_HERE":
+        await query.message.reply_text(
+            "✅ عضویت تأیید شد.\n"
+            "ویدیو هنوز توسط مدیر ربات تنظیم نشده است."
+        )
+        return
+
+    video_message = await context.bot.send_video(
+        chat_id=query.from_user.id,
+        video=VIDEO_FILE_ID,
+        caption="🎬 ویدیو ارسال شد.\n⏳ این ویدیو تا ۱۰ ثانیه دیگر حذف خواهد شد؛ در صورت نیاز آن را ذخیره کنید."
+    )
+
+    await asyncio.sleep(10)
+
+    try:
+        await video_message.delete()
+    except Exception:
+        pass
+
+
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(check_button, pattern="^check$"))
+
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
